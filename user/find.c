@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
     }
     dir_path = argv[1];
     filename = argv[2];
-    if ((dir_fd = open(dir_path, O_RDONLY)) < 0) 
+    if ((dir_fd = open(dir_path, O_RDONLY)) < 0)
     {
         fprintf(2, "error: cannot open %s\n", dir_path);
         exit(1);
@@ -33,9 +33,9 @@ void find(int dir_fd, const char *dir_path, const char *target_filename)
     char *p, *q;
     struct stat st;
     struct dirent de;
-    if(strlen(dir_path) + 1 + DIRSIZ + 1 > sizeof(file_path))
+    if (strlen(dir_path) + 1 + DIRSIZ + 1 > sizeof(file_path))
     {
-        fprintf(2, "error: path too long: %s\n",dir_path);
+        fprintf(2, "error: path too long: %s\n", dir_path);
         close(dir_fd);
         return;
     }
@@ -47,7 +47,7 @@ void find(int dir_fd, const char *dir_path, const char *target_filename)
     {
         if (strcmp(de.name, ".") == 0 || strcmp(de.name, "..") == 0)
             continue;
-        if(de.inum == 0)
+        if (de.inum == 0)
             continue;
         q = p;
         memmove(q, de.name, DIRSIZ);
@@ -60,8 +60,8 @@ void find(int dir_fd, const char *dir_path, const char *target_filename)
             find(fd, file_path, target_filename);
             break;
         case T_FILE:
-            if(strcmp(target_filename, q) == 0)
-                printf("%s\n",file_path);
+            if (strcmp(target_filename, q) == 0)
+                printf("%s\n", file_path);
             close(fd);
             break;
         case T_DEVICE:
