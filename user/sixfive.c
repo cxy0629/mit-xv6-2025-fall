@@ -59,3 +59,5 @@ void sixfive(const char *filename)
     }
     return;
 }
+
+// 注意：因为读取文件结尾不修改字符c的值，需要先进行数字结束符号的判断
