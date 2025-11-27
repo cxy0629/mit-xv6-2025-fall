@@ -30,7 +30,7 @@ void sixfive(const char *filename)
     if ((fd = open(filename, O_RDONLY)) < 0)
     {
         fprintf(2, "error: cannot open %s\n", filename);
-        exit(1);
+        return;
     }
     while (1)
     {
@@ -57,6 +57,7 @@ void sixfive(const char *filename)
         if (is_finish)
             break;
     }
+    close(fd);
     return;
 }
 
