@@ -3,17 +3,18 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 #include "kernel/fs.h"
+#include "kernel/param.h"
 
-void find(int dir_fd, const char *cur_dir_path, const char *target_filename);
+void find(int dir_fd, const char *cur_dir_path, const char *target_filename, char *argv[], int argc);
 
 int main(int argc, char *argv[])
 {
     int dir_fd;
     char *dir_path;
     char *filename;
-    if (argc != 3)
+    if (argc < 3 || argc == 4)
     {
-        fprintf(2, "usage: find <directory> <filename>\n");
+        fprintf(2, "usage: find <directory> <filename> [-exec <command> <args>...]\n");
         exit(1);
     }
     dir_path = argv[1];
@@ -23,11 +24,17 @@ int main(int argc, char *argv[])
         fprintf(2, "error: cannot open %s\n", dir_path);
         exit(1);
     }
-    find(dir_fd, dir_path, filename);
+    if (argc > 4 && strcmp(argv[3], "-exec") != 0)
+    {
+        fprintf(2, "usage: find <directory> <filename> [-exec <command> <args>...]\n");
+        exit(1);
+    }
+    else
+        find(dir_fd, dir_path, filename, argv + 3, argc - 4);
     exit(0);
 }
 
-void find(int dir_fd, const char *dir_path, const char *target_filename)
+void find(int dir_fd, const char *dir_path, const char *target_filename, char *argv[], int argc)
 {
     char file_path[512];
     char *p, *q;
@@ -57,11 +64,29 @@ void find(int dir_fd, const char *dir_path, const char *target_filename)
         switch (st.type)
         {
         case T_DIR:
-            find(fd, file_path, target_filename);
+            find(fd, file_path, target_filename, argv, argc);
             break;
         case T_FILE:
             if (strcmp(target_filename, q) == 0)
-                printf("%s\n", file_path);
+            {
+                if (strcmp(argv[0], "-exec") == 0)
+                {
+                    if (fork() == 0)
+                    {
+                        char *new_argv[MAXARG];
+                        int i;
+                        for (i = 0; i < argc; i++)
+                            new_argv[i] = argv[i + 1];
+                        new_argv[i++] = file_path;
+                        new_argv[i] = 0;
+                        exec(argv[1], new_argv);
+                    }
+                    else
+                        wait(0);
+                }
+                else
+                    printf("%s\n", file_path);
+            }
             close(fd);
             break;
         case T_DEVICE:
@@ -97,3 +122,7 @@ void find(int dir_fd, const char *dir_path, const char *target_filename)
 // 作为根目录，.和..指向的inode都是1，毕竟根目录没有上一级目录了
 // 文件系统采用一种懒惰的机制管理目录项的变化，被删除的文件对应的目录项会简单的将inum置为0
 // 即索引节点编号从1开始，0作为一个不会使用的编号在目录项中承担了无效的含义，根目录的inum也确实是1
+
+// 新引入的exec选项的含义是指将找到的文件作为exec选项指令的参数
+// 核心任务是做好分类判断和参数传入
+// 父进程需要wait：1.保证子进程的执行按照查找顺序进行 2.保证子进程在退出前父进程未结束，防止产生孤儿
