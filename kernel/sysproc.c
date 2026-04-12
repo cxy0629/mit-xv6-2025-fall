@@ -13,7 +13,7 @@ sys_exit(void)
   int n;
   argint(0, &n);
   kexit(n);
-  return 0;  // not reached
+  return 0; // not reached
 }
 
 uint64
@@ -47,15 +47,19 @@ sys_sbrk(void)
   argint(1, &t);
   addr = myproc()->sz;
 
-  if(t == SBRK_EAGER || n < 0) {
-    if(growproc(n) < 0) {
+  if (t == SBRK_EAGER || n < 0)
+  {
+    if (growproc(n) < 0)
+    {
       return -1;
     }
-  } else {
+  }
+  else
+  {
     // Lazily allocate memory for this process: increase its memory
     // size but don't allocate memory. If the processes uses the
     // memory, vmfault() will allocate it.
-    if(addr + n < addr)
+    if (addr + n < addr)
       return -1;
     myproc()->sz += n;
   }
@@ -69,12 +73,14 @@ sys_pause(void)
   uint ticks0;
 
   argint(0, &n);
-  if(n < 0)
+  if (n < 0)
     n = 0;
   acquire(&tickslock);
   ticks0 = ticks;
-  while(ticks - ticks0 < n){
-    if(killed(myproc())){
+  while (ticks - ticks0 < n)
+  {
+    if (killed(myproc()))
+    {
       release(&tickslock);
       return -1;
     }
@@ -104,4 +110,15 @@ sys_uptime(void)
   xticks = ticks;
   release(&tickslock);
   return xticks;
+}
+
+uint64 sys_interpose(void)
+{
+  int mask;
+  struct proc *p = myproc();
+  argint(0, &mask);
+  if (argstr(1, p->path, MAXPATH) < 0)
+    return -1;
+  p->mask = mask;
+  return 0;
 }

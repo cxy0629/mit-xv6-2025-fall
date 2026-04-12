@@ -1,0 +1,6 @@
+1. usertrap called syscall
+2. 0xf, the first user program user/init.c is calling open() to use SYS_open(15)
+3. usermode, $sstatus=0x200000022, SPP bit(bit 8 of the sstatus) represents previous mode, 1-machin mode 0-usermode
+4. 80001d08:	00002683          	lw	a3,0(zero) # 0 <_entry-0x80000000>, a3 corresponds to the variable num
+5. $scause=0xd, address 0 is not mapped in the kernel space, load page fault
+6. init, 1
