@@ -96,14 +96,14 @@ supercheck(char *end)
   pte_t last_pte = 0;
   uint64 a = (uint64) end;
   uint64 s = SUPERPGROUNDUP(a);
-
+  // 检查旧堆顶（end）到第一个超级页边界是否被普通页填满
   for (; a < s; a += PGSIZE) {
     pte_t pte = (pte_t) pgpte((void *) a);
     if (pte == 0) {
       err("no pte");
     }
   }
-
+  // 检查第一个超级页对应空间内的的512个普通页是否映射到同一个超级页页表项
   for (uint64 p = s;  p < s + 512 * PGSIZE; p += PGSIZE) {
     pte_t pte = (pte_t) pgpte((void *) p);
     if(pte == 0)
@@ -116,7 +116,7 @@ supercheck(char *end)
     }
     last_pte = pte;
   }
-
+  // 修改第一个超级页，检查是否修改成功
   for(int i = 0; i < 512 * PGSIZE; i += PGSIZE){
     *(int*)(s+i) = i;
   }
@@ -171,6 +171,7 @@ superpg_fork()
       exit(1);
     }
   }  
+  // 子进程继承的虚拟空间内已经释放了sbrk(SZ)分配的空间，错误的访问导致子进程被内核杀死，异常退出导致status不为0，父进程正常输出如下信息并退出
   printf("superpg_fork: OK\n");  
 }
 
@@ -189,9 +190,10 @@ superpg_free()
   // free pages beyond a super page
   char *a = sbrk(0);
   uint64 s = SUPERPGROUNDDOWN((uint64) a);
+  // 释放最后一个超级页后的所有普通页
   sbrk(-((uint64) a-s));
   a = sbrk(0);
-
+  // 检查最后一个超级页的页表项
   pte_t pte1 = (pte_t) pgpte((void *) a-PGSIZE);
   pte_t pte2 = (pte_t) pgpte((void *) a-2*PGSIZE);
   if (pte1 != pte2) {
@@ -205,7 +207,7 @@ superpg_free()
   // free last 4096 bytes of a super page
   sbrk(-PGSIZE);
   a = sbrk(0);
-
+  // 检查最后一个超级页降级后是否保留有之前被写入的信息9
   if (*(a - PGSIZE + 1) != '9') {
     err("lost content after freeing part of super page");
   }
@@ -217,6 +219,7 @@ superpg_free()
      // space, since the parent freed it. The following reference
      // should result in page fault and the kernel should kill the
      // child.
+     // a+1已经被释放，会导致子进程发生错误，退出码不为0
     if (* (a + 1) == '9') {
       exit(0);
     }
@@ -228,12 +231,12 @@ superpg_free()
       exit(1);
     }
   }
-
+  // 检查被释放的内存页对应的页表项是否也被正确清除
   pte1 = (pte_t) pgpte((void *) a);
   if(pte1 != 0) {
     err("pte for freed memory is valid");
   }
-
+  // 循环释放最后一个超级页内剩余的511个普通页，检查对应页表项是否被正确清除
   s = SUPERPGROUNDDOWN((uint64) a);
   for (; (uint64) a > s; a -= PGSIZE) {
     a = sbrk(-PGSIZE);

@@ -241,3 +241,11 @@ void            netinit(void);
 void            net_rx(char *buf, int len);
 
 #endif
+
+#ifdef LAB_PGTBL
+// kalloc.c
+void            superfree(void *);
+void *          superalloc(void);
+// vm.c
+pte_t *         superwalk(pagetable_t pagetable, uint64 va, int alloc, int *l);
+#endif
