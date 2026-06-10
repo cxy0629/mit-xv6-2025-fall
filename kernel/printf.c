@@ -139,6 +139,8 @@ panic(char *s)
   panicking = 1;
   printf("panic: ");
   printf("%s\n", s);
+  // 增加输出栈帧功能
+  backtrace();
   panicked = 1; // freeze uart output from other CPUs
   for(;;)
     ;
@@ -148,4 +150,18 @@ void
 printfinit(void)
 {
   initlock(&pr.lock, "pr");
+}
+
+void backtrace(void){
+  // 读取s0寄存器的值，即当前函数backtrace的帧指针
+  uint64 s0 = r_fp();
+  uint64 ra; 
+  uint64 top = PGROUNDUP(s0);
+  printf("backtrace:\n");
+  // 内核栈由高地址向低地址增长，且一个进程的内核栈大小为PGSIZE，当s0到达top时说明已经遍历完了所有函数栈帧
+  while(s0 != top){
+    ra = *(uint64 *)(s0 - 8);
+    printf("%p\n", (void *)ra);
+    s0 = *(uint64 *)(s0 - 16);
+  }
 }

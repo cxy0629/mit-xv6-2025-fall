@@ -81,9 +81,25 @@ usertrap(void)
     kexit(-1);
 
   // give up the CPU if this is a timer interrupt.
-  if(which_dev == 2)
+  if(which_dev == 2){
+    // 发生时钟中断时，需要在yield前做好alarm检查
+    // 如果alarm触发了handler，在调度前做好handler的准备工作（修改epc）
+    // 当再次切换到该进程时，就会沿着修改后的epc返回用户态并执行handler函数
+    //tips: 1. handler函数需要返回用户态去执行，一方面handler是用户空间的地址，另一方面handler的执行依赖用户态下的现场环境
+    //      2. handler在执行前需要保存好用户态的现场环境，虽然都是用户态执行，但是handler类似于trap行为，打断了用户态的正常执行流程，会破坏现场
+    if(p->interval > 0 && p->in_alarm == 0){
+      p->ticks++;
+      if(p->ticks == p->interval){
+        // 保存trapframe到alarm_trapframe中
+        // 注意一定要在修改p->trapframe->epc之前保存现场
+        *(p->alarm_trapframe) = *(p->trapframe);
+        p->ticks = 0;
+        p->in_alarm = 1;
+        p->trapframe->epc = (uint64)(p->handler);
+      }
+    }
     yield();
-
+  }
   prepare_return();
 
   // the user page table to switch to, for trampoline.S

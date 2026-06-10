@@ -104,4 +104,11 @@ struct proc {
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
+
+  // 与sigalarm、sigreturn相关的字段
+  int interval;                // alarm触发的时间间隔，0表示不启用，大于0表示启用
+  void (*handler)();           // alarm触发的函数指针
+  int ticks;                   // 进程在用户态下运行的ticks数，达到intervel时触发handler
+  struct trapframe *alarm_trapframe; // 用于保存触发alarm时的用户态trapframe，供handler完成后恢复用户态现场
+  int in_alarm;                // 标志是否在alarm中，防止重入
 };

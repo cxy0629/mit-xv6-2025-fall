@@ -24,6 +24,9 @@ int getpid(void);
 char* sys_sbrk(int,int);
 int pause(int);
 int uptime(void);
+// 新的系统调用sigalarm和sigreturn
+int sigalarm(int, void (*)());
+int sigreturn(void);
 
 // ulib.c
 int stat(const char*, struct stat*);

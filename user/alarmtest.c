@@ -42,7 +42,9 @@ periodic()
   s11_var = ~S11_CHECKVAL;
   count = count + 1;
   printf("alarm!\n");
+  // 此处进行现场恢复，恢复至触发alarm的用户态环境
   sigreturn();
+  // 正常路径下printf不会执行，执行路径已经由sigreturn修改
   printf("oops, sigreturn returned!\n");
   exit(1);
 }

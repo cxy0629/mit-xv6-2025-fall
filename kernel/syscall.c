@@ -101,6 +101,10 @@ extern uint64 sys_unlink(void);
 extern uint64 sys_link(void);
 extern uint64 sys_mkdir(void);
 extern uint64 sys_close(void);
+// tips: riscv底层通过寄存器a0/a1...传递参数，系统调用也不例外，但是在状态切换时会导致寄存器信息被保存至trapframe
+// 所以内核态下的系统调用需要通过trapframe来获取系统调用参数，所有的系统调用函数的参数列表都是空的
+extern uint64 sys_sigalarm(void);
+extern uint64 sys_sigreturn(void);
 
 // An array mapping syscall numbers from syscall.h
 // to the function that handles the system call.
@@ -126,6 +130,8 @@ static uint64 (*syscalls[])(void) = {
 [SYS_link]    sys_link,
 [SYS_mkdir]   sys_mkdir,
 [SYS_close]   sys_close,
+[SYS_sigalarm]  sys_sigalarm,
+[SYS_sigreturn] sys_sigreturn,
 };
 
 void
@@ -138,7 +144,12 @@ syscall(void)
   if(num > 0 && num < NELEM(syscalls) && syscalls[num]) {
     // Use num to lookup the system call function for num, call it,
     // and store its return value in p->trapframe->a0
-    p->trapframe->a0 = syscalls[num]();
+    // 此处会将系统调用服务例程的返回值写入trapframe内的a0，但实际上对于sigreturn来说，a0的值并不来源于sys_sigreturn的返回值
+    // 而是来源于触发alarm时保存的现场
+    if(num == SYS_sigreturn)
+      syscalls[num]();
+    else
+      p->trapframe->a0 = syscalls[num]();
   } else {
     printf("%d %s: unknown sys call %d\n",
             p->pid, p->name, num);
