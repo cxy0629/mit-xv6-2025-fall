@@ -132,7 +132,7 @@ filetest()
   printf("file: ");
   
   buf[0] = 99;
-
+  // sys_pipe会将内核区的文件描述符copyout至fds，之前的测试里fork会导致fds所在页变成COW页
   for(int i = 0; i < N; i++){
     if(pipe(fds) != 0){
       printf("pipe() failed\n");
