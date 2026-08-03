@@ -104,6 +104,8 @@ e1000_transmit(char *buf, int len)
   // return -1 on failure (e.g., there is no descriptor available)
   // so that the caller knows to free buf.
   //
+  printf("e1000_transmit: sending a packet of length %d\n", len);
+  
 
   
   return 0;
