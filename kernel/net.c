@@ -19,10 +19,16 @@ static uint8 host_mac[ETHADDR_LEN] = { 0x52, 0x55, 0x0a, 0x00, 0x02, 0x02 };
 
 static struct spinlock netlock;
 
+// UDP端口表
+static struct udp_port udp_ports[MAX_UDP_PORTS];
+
+
 void
 netinit(void)
 {
   initlock(&netlock, "netlock");
+  // 初始化UDP端口表
+  memset(udp_ports, 0, sizeof(udp_ports));
 }
 
 
@@ -34,10 +40,37 @@ netinit(void)
 uint64
 sys_bind(void)
 {
-  //
-  // Your code here.
-  //
+  // 获取端口号参数
+  int port;
+  argint(0, &port);
 
+  acquire(&netlock);
+
+  // 检查端口号是否已绑定
+  for(int i = 0; i < MAX_UDP_PORTS; i++){
+    if(udp_ports[i].used == 1 && udp_ports[i].port == port){
+      release(&netlock);
+      return -1;
+    }
+  }
+
+  // 查找未使用的端口表项
+  for(int i = 0; i < MAX_UDP_PORTS; i++){
+    // 找到未使用的端口表项，进行绑定
+    if(udp_ports[i].used == 0){
+      udp_ports[i].used = 1;
+      udp_ports[i].port = port;
+      memset(udp_ports[i].queue, 0, sizeof(udp_ports[i].queue));
+      udp_ports[i].head = 0;
+      udp_ports[i].tail = 0;
+      udp_ports[i].count = 0;
+      release(&netlock);
+      return 0;
+    }
+  }
+
+  // UDP端口表已满，无法绑定新端口
+  release(&netlock);
   return -1;
 }
 
@@ -74,10 +107,77 @@ sys_unbind(void)
 uint64
 sys_recv(void)
 {
-  //
-  // Your code here.
-  //
-  return -1;
+  struct proc *p = myproc();
+
+  // 获取参数
+  int dport;
+  uint64 src_ip_addr;
+  uint64 src_port_addr;
+  uint64 buf;
+  int maxlen;
+  argint(0, &dport);
+  uint16 dst_port = (uint16)dport;
+  argaddr(1, &src_ip_addr);
+  argaddr(2, &src_port_addr);
+  argaddr(3, &buf);
+  argint(4, &maxlen);
+  
+  acquire(&netlock);
+
+  // 查找绑定的端口表项
+  struct udp_port *port_entry = 0;
+  for(int i = 0; i < MAX_UDP_PORTS; i++){
+    if(udp_ports[i].used == 1 && udp_ports[i].port == dst_port){
+      port_entry = &udp_ports[i];
+      break;
+    }
+  }
+
+  // 若未找到绑定的端口表项，则返回错误
+  if(port_entry == 0){
+    release(&netlock);
+    return -1;
+  }
+
+  // 若接收队列为空，则等待
+  while(port_entry->count == 0)
+    sleep(port_entry, &netlock);
+  
+  // 接收队列不为空
+  // 获取源ip地址和端口号
+  uint32 src_ip = port_entry->queue[port_entry->head].src_ip;
+  uint16 src_port = port_entry->queue[port_entry->head].src_port;
+
+  // 写回源ip地址和端口号到用户空间
+  if((copyout(p->pagetable, src_ip_addr, (char *)&src_ip, sizeof(src_ip))) < 0){
+    release(&netlock);
+    return -1;
+  }
+  if((copyout(p->pagetable, src_port_addr, (char *)&src_port, sizeof(src_port))) < 0){
+    release(&netlock);
+    return -1;
+  }
+
+  // 有效载荷写回用户缓冲区
+  char *payload = port_entry->queue[port_entry->head].payload;
+  int payload_len = port_entry->queue[port_entry->head].len;
+  if(payload_len > maxlen)
+    payload_len = maxlen;
+  if((copyout(p->pagetable, buf, payload, payload_len)) < 0){
+    release(&netlock);
+    return -1;
+  }
+
+  // 清理内核缓冲区
+  kfree(payload);
+
+  // 更新接收队列头指针和计数
+  port_entry->head = (port_entry->head + 1) % UDP_QUEUE_SIZE;
+  port_entry->count--;
+
+  release(&netlock);
+
+  return payload_len;
 }
 
 // This code is lifted from FreeBSD's ping.c, and is copyright by the Regents
@@ -188,10 +288,71 @@ ip_rx(char *buf, int len)
     printf("ip_rx: received an IP packet\n");
   seen_ip = 1;
 
-  //
-  // Your code here.
-  //
-  
+  // 拆解各级数据包头部和有效载荷
+  struct eth *eth = (struct eth *)buf;
+  struct ip *ip = (struct ip *)(eth + 1);
+  struct udp *udp = (struct udp *)(ip + 1);
+  char *payload = (char *)(udp + 1);
+
+  // 获取数据包头部信息
+  uint32 src_ip = ntohl(ip->ip_src);
+  uint32 dst_ip = ntohl(ip->ip_dst);
+  uint16 src_port = ntohs(udp->sport);
+  uint16 dst_port = ntohs(udp->dport);
+
+  // 检查目的ip地址、mac地址和udp协议是否匹配
+  if(dst_ip != local_ip || memcmp(eth->dhost, local_mac, ETHADDR_LEN) != 0 || ip->ip_p != IPPROTO_UDP){
+    kfree(buf);
+    return;
+  }
+
+  // 计算有效载荷长度
+  int payload_len = ntohs(udp->ulen) - sizeof(struct udp);
+
+  acquire(&netlock);
+
+  // 查找绑定的端口表项
+  struct udp_port *port_entry = 0;
+  for(int i = 0; i < MAX_UDP_PORTS; i++){
+    if(udp_ports[i].used == 1 && udp_ports[i].port == dst_port){
+      port_entry = &udp_ports[i];
+      break;
+    }
+  }
+
+  // 若未找到绑定的端口表项或接收队列已满，则丢弃数据包
+  if(port_entry == 0 || port_entry->count == UDP_QUEUE_SIZE){
+    kfree(buf);
+    release(&netlock);
+    return;
+  }
+
+  // 创建新的内核缓冲区，用于存放有效载荷，等待sys_recv接收
+  char *new_payload = kalloc();
+  if(new_payload == 0){
+    kfree(buf);
+    release(&netlock);
+    return;
+  }
+  memmove(new_payload, payload, payload_len);
+
+  // 释放原始缓冲区
+  kfree(buf);
+
+  // 将有效载荷放入接收队列
+  port_entry->queue[port_entry->tail].src_ip = src_ip;
+  port_entry->queue[port_entry->tail].src_port = src_port;
+  port_entry->queue[port_entry->tail].payload = new_payload;
+  port_entry->queue[port_entry->tail].len = payload_len;
+
+  // 更新接收队列的尾指针和计数
+  port_entry->tail = (port_entry->tail + 1) % UDP_QUEUE_SIZE;
+  port_entry->count++;
+
+  // 唤醒等待接收的进程
+  wakeup(port_entry);
+
+  release(&netlock);
 }
 
 //

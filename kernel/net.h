@@ -125,3 +125,26 @@ struct dns_data {
   uint32 ttl;
   uint16 len;
 } __attribute__((packed));
+
+
+// 用于接收的UDP数据包信息
+struct udp_packet {
+  char *payload;   // 有效载荷
+  int len;         // 有效载荷长度
+  uint32 src_ip;   // 源ip地址（供sys_recv使用）
+  uint16 src_port; // 源端口号（供sys_recv使用）
+};
+
+#define UDP_QUEUE_SIZE 16 // 端口接收队列长度
+
+#define MAX_UDP_PORTS 32 // 最大UDP端口数量
+
+// UDP端口信息
+struct udp_port{
+  int used;                                // 端口是否被使用
+  uint16 port;                             // 端口号
+  struct udp_packet queue[UDP_QUEUE_SIZE]; // 接收队列
+  int head;                                // 接收队列头指针
+  int tail;                                // 接收队列尾指针
+  int count;                               // 接收队列中数据包数量
+};
